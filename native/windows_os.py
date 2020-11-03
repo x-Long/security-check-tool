@@ -8,6 +8,7 @@ from typing import Iterable
 from abstract_os import AbstractOS
 from winreg import *
 import datetime
+import wmi
 
 class WindowsNative(AbstractOS):
     def get_file_access_records(self) -> Iterable[dict]:
@@ -119,24 +120,23 @@ class WindowsNative(AbstractOS):
                 keyHandle_3 = OpenKey(regRoot, result_path)
                 numKey = QueryInfoKey(keyHandle_3)[1]
                 for k in range(numKey):
-
                     record = {}
                     name, value, type_ = EnumValue(keyHandle_3, k)
-                    if(('Service' in name) and ('WUDFRd' in value)):
-                        device_name, type_ = QueryValueEx(
-                            keyHandle_3, 'FriendlyName')
-                        manufacture, type_ = QueryValueEx(keyHandle_3, 'Mfg')
-                        storage, type_ = QueryValueEx(keyHandle_3, 'Capabilities')
-                        serilas = subKeyName_2
+                    # print(name)
+                    if(('Service' in name) and ('WUDF' in value)):
+                        try:
+                            device_name, type_ = QueryValueEx( keyHandle_3, 'FriendlyName')
+                            manufacture, type_ = QueryValueEx(keyHandle_3, 'Mfg')
+                            storage, type_ = QueryValueEx(keyHandle_3, 'Capabilities')
+                            last_plugin_time = str(datetime.datetime.fromtimestamp(int(QueryInfoKey(keyHandle_3)[2]*0.0000001+timestamp)))
+                            record["device_name"] = device_name
+                            record["manufacture"] = manufacture
+                            record["storage"] = str(storage)+"GB"
+                            record["last_plugin_time"] = last_plugin_time
 
-                        last_plugin_time = str(datetime.datetime.fromtimestamp(
-                            int(QueryInfoKey(keyHandle_3)[2]*0.0000001+timestamp)))
-                        record["device_name"] = device_name
-                        record["manufacture"] = manufacture
-                        record["storage"] = str(storage)+"GB"
-                        record["last_plugin_time"] = last_plugin_time
-
-                        yield record
+                            yield record
+                        except:
+                            pass
 
         CloseKey(keyHandle)
         CloseKey(regRoot)
@@ -182,13 +182,128 @@ class WindowsNative(AbstractOS):
         CloseKey(regRoot)
 
     def get_installed_anti_virus_software_records(self) -> Iterable[dict]:
-        pass
+
+        sub_key = [r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                r'SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall']
+
+        for i in sub_key:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                i, 0, winreg.KEY_ALL_ACCESS)
+            for j in range(0, winreg.QueryInfoKey(key)[0]-1):
+
+                softwareInfo = {}
+                try:
+                    key_name = winreg.EnumKey(key, j)
+                    key_path = i + '\\' + key_name
+                    each_key = winreg.OpenKey(
+                        winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS)
+
+                    name, REG_SZ = winreg.QueryValueEx(each_key, 'DisplayName')
+                    version, REG_SZ = winreg.QueryValueEx(
+                        each_key, 'DisplayVersion')
+
+                    try:
+                        install_path, REG_SZ = winreg.QueryValueEx(
+                            each_key, 'InstallLocation')
+                        if install_path == "":
+                            raise WindowsError
+                    except WindowsError:
+                        try:
+                            install_path, REG_SZ = winreg.QueryValueEx(
+                                each_key, 'InstallSource')
+                            if install_path == "":
+                                raise WindowsError
+                        except:
+                            install_path, REG_SZ = winreg.QueryValueEx(
+                                each_key, 'UninstallString')
+                            install_path = os.path.dirname(install_path)
+
+                    softwareInfo["name"] = name
+                    softwareInfo["version"] = version
+                    softwareInfo["install_path"] = install_path
+
+                    # 主流杀软
+                    try:
+                        if install_path.index("360Safe"):   # 360安全
+                            yield softwareInfo
+                        elif install_path.index("Kaspersky"):    # 卡巴斯基
+                            yield softwareInfo
+                        elif install_path.index("Rising"):   # 瑞星
+                            yield softwareInfo
+                        elif install_path.index("KWatch"):   # 金山
+                            yield softwareInfo
+                    except:
+                        pass
+
+                except WindowsError:
+                    pass
 
     def get_installed_software_records(self) -> Iterable[dict]:
-        pass
+
+        sub_key = [r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                r'SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall']
+        for i in sub_key:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                i, 0, winreg.KEY_ALL_ACCESS)
+            for j in range(0, winreg.QueryInfoKey(key)[0]-1):
+                softwareInfo = {}
+                try:
+                    key_name = winreg.EnumKey(key, j)
+                    key_path = i + '\\' + key_name
+                    each_key = winreg.OpenKey(
+                        winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_ALL_ACCESS)
+
+                    name, REG_SZ = winreg.QueryValueEx(each_key, 'DisplayName')
+                    version, REG_SZ = winreg.QueryValueEx(
+                        each_key, 'DisplayVersion')
+                    Publisher, REG_SZ = winreg.QueryValueEx(each_key, 'Publisher')
+
+                    # 只有通过windowsinstaller安装的软件才有 InstallDate 字段
+                    try:
+                        InstallDate, REG_SZ = winreg.QueryValueEx(
+                            each_key, 'InstallDate')
+                    except:
+                        InstallDate = "unwriten"
+                    try:
+                        install_path, REG_SZ = winreg.QueryValueEx(
+                            each_key, 'InstallLocation')
+                        if install_path == "":
+                            raise WindowsError
+                    except WindowsError:
+                        try:
+                            install_path, REG_SZ = winreg.QueryValueEx(
+                                each_key, 'InstallSource')
+                            if install_path == "":
+                                raise WindowsError
+                        except:
+                            install_path, REG_SZ = winreg.QueryValueEx(
+                                each_key, 'UninstallString')
+                            install_path = os.path.dirname(install_path)+"\\"
+                    softwareInfo["name"] = name
+                    softwareInfo["Publisher"] = Publisher
+                    softwareInfo["version"] = version
+                    softwareInfo["install_path"] = install_path
+                    softwareInfo["InstallDate"] = InstallDate
+                    yield softwareInfo
+
+                except WindowsError:
+                    pass
 
     def get_services_records(self) -> Iterable[dict]:
-        pass
+
+        c = wmi.WMI()
+        for s in c.Win32_Service():
+            is_system_service = 'true' if s.ServiceType == "Own Process" else 'false'
+            yield {
+                "name": s.Name,
+                "display_name": s.DisplayName,
+                "start_type": s.StartMode,
+                "process_id": s.ProcessId,
+                "file_path": s.PathName,
+                "status": s.State,
+                "is_system_service": is_system_service
+
+            }
 
     def get_current_network_records(self) -> Iterable[dict]:
         pass
