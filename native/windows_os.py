@@ -7,26 +7,27 @@ import winshell as ws
 from typing import Iterable
 from abstract_os import AbstractOS
 from winreg import *
-
+import datetime
 
 class WindowsNative(AbstractOS):
     def get_file_access_records(self) -> Iterable[dict]:
 
-        direction = 'C:\\Users\\'+getpass.getuser()+'\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\'
+        direction = os.environ.get(
+            "USERPROFILE")+'\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\'
         file_lists = os.listdir(direction)
-
         for i in range(len(file_lists)):
-            record={}
+            record = {}
             try:
                 shell = win32com.client.Dispatch("WScript.Shell")
                 shortcut = shell.CreateShortCut(direction+file_lists[i])
-                record["username"]=direction.split("\\")[2]
-                record["access_time"]=str(datetime.datetime.utcfromtimestamp(int(os.path.getatime(direction+file_lists[i]))))
-                record["file_path"]=shortcut.Targetpath
+                record["username"] = direction.split("\\")[2]
+                record["access_time"] = str(datetime.datetime.utcfromtimestamp(
+                    int(os.path.getatime(direction+file_lists[i]))))
+                record["file_path"] = shortcut.Targetpath
                 if os.path.exists(shortcut.Targetpath):
-                    record["is_exists"]=True  
+                    record["is_exists"] = True
                 else:
-                    record["is_exists"]=False
+                    record["is_exists"] = False
 
                 yield record
             except:
@@ -53,12 +54,15 @@ class WindowsNative(AbstractOS):
 
     def get_usb_storage_device_using_records(self):
 
+        timestamp = (datetime.datetime(1600, 1, 1) -
+                    datetime.datetime(1970, 1, 1)).total_seconds()
         regRoot = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
         subDir = r"SYSTEM\CurrentControlSet\Enum\USBSTOR"
         keyHandle = OpenKey(regRoot, subDir)
         count = QueryInfoKey(keyHandle)[0]
 
         for i in range(count):
+
             subKeyName = EnumKey(keyHandle, i)
             subDir_2 = r'%s\%s' % (subDir, subKeyName)
             keyHandle_2 = OpenKey(regRoot, subDir_2)
@@ -70,26 +74,24 @@ class WindowsNative(AbstractOS):
                 keyHandle_3 = OpenKey(regRoot, result_path)
                 numKey = QueryInfoKey(keyHandle_3)[1]
                 for k in range(numKey):
-                    record={}
+                    record = {}
                     name, value, type_ = EnumValue(keyHandle_3, k)
-                    if(('Service' in name) and ('disk'in value)):
-                        device_name,type_ = QueryValueEx(keyHandle_3,'FriendlyName')
-                        serilas= subKeyName_2
-                        manufacture=device_name.split(" ")[0]
-                        description,type_ = QueryValueEx(keyHandle_3,'DeviceDesc')
+                    if(('Service' in name) and ('disk' in value)):
 
-                        with open('C:\\Windows\\inf\\setupapi.dev.log', 'r') as f1:
-                            list1 = f1.readlines()
-                        le=len(list1)
-                        for i in range(0, len(list1)):
-                            if serilas[:-2] in list1[i-le] :
-                                last_plugin_time=list1[i-le+1][19:-8]
-                                break
-                        record["device_name"]=device_name
-                        record["serilas"]=serilas[:-2]
-                        record["manufacture"]=manufacture
-                        record["description"]=str(description.split(";")[1:])[1:-1]
-                        record["last_plugin_time"]=last_plugin_time
+                        device_name, type_ = QueryValueEx(
+                            keyHandle_3, 'FriendlyName')
+                        serilas = subKeyName_2
+                        manufacture = device_name.split(" ")[0]
+                        description, type_ = QueryValueEx(
+                            keyHandle_3, 'DeviceDesc')
+                        last_plugin_time = str(datetime.datetime.fromtimestamp(
+                            int(QueryInfoKey(keyHandle_3)[2]*0.0000001+timestamp)))
+                        record["device_name"] = device_name
+                        record["serilas"] = serilas[:-2]
+                        record["manufacture"] = manufacture
+                        record["description"] = str(
+                            description.split(";")[1:])[1:-1]
+                        record["last_plugin_time"] = last_plugin_time
 
                         yield record
         CloseKey(keyHandle)
@@ -97,6 +99,8 @@ class WindowsNative(AbstractOS):
 
     def get_cell_phone_records(self) -> Iterable[dict]:
 
+        timestamp = (datetime.datetime(1600, 1, 1) -
+                    datetime.datetime(1970, 1, 1)).total_seconds()
         regRoot = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
         subDir = r"SYSTEM\CurrentControlSet\Enum\USB"
         keyHandle = OpenKey(regRoot, subDir)
@@ -109,31 +113,31 @@ class WindowsNative(AbstractOS):
             num = QueryInfoKey(keyHandle_2)[0]
 
             for j in range(num):
+
                 subKeyName_2 = EnumKey(keyHandle_2, j)
                 result_path = r'%s\%s' % (subDir_2, subKeyName_2)
                 keyHandle_3 = OpenKey(regRoot, result_path)
                 numKey = QueryInfoKey(keyHandle_3)[1]
                 for k in range(numKey):
-                    record={}
+
+                    record = {}
                     name, value, type_ = EnumValue(keyHandle_3, k)
-                    if(('Service' in name) and ('WUDFRd'in value)):
-                        device_name,type_ = QueryValueEx(keyHandle_3,'FriendlyName')
-                        manufacture,type_ = QueryValueEx(keyHandle_3,'Mfg')
-                        storage,type_ = QueryValueEx(keyHandle_3,'Capabilities')
-                        serilas= subKeyName_2
-                        with open('C:\\Windows\\inf\\setupapi.dev.log', 'r') as f1:
-                            list1 = f1.readlines()
-                        le=len(list1)
-                        for i in range(0, len(list1)):
-                            if serilas[:-2] in list1[i-le] :
-                                last_plugin_time=list1[i-le+1][19:-8]
-                                break
-                        record["device_name"]=device_name
-                        record["manufacture"]=manufacture
-                        record["storage"]=str(storage)+"GB"
-                        record["last_plugin_time"]=last_plugin_time
+                    if(('Service' in name) and ('WUDFRd' in value)):
+                        device_name, type_ = QueryValueEx(
+                            keyHandle_3, 'FriendlyName')
+                        manufacture, type_ = QueryValueEx(keyHandle_3, 'Mfg')
+                        storage, type_ = QueryValueEx(keyHandle_3, 'Capabilities')
+                        serilas = subKeyName_2
+
+                        last_plugin_time = str(datetime.datetime.fromtimestamp(
+                            int(QueryInfoKey(keyHandle_3)[2]*0.0000001+timestamp)))
+                        record["device_name"] = device_name
+                        record["manufacture"] = manufacture
+                        record["storage"] = str(storage)+"GB"
+                        record["last_plugin_time"] = last_plugin_time
 
                         yield record
+
         CloseKey(keyHandle)
         CloseKey(regRoot)
 
